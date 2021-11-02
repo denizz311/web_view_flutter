@@ -94,6 +94,7 @@
     configuration.allowsInlineMediaPlayback = true;
     [self updateAutoMediaPlaybackPolicy:args[@"autoMediaPlaybackPolicy"]
                         inConfiguration:configuration];
+
     _webView = [[FLTWKWebView alloc] initWithFrame:frame configuration:configuration];
     _navigationDelegate = [[FLTWKNavigationDelegate alloc] initWithChannel:_channel];
     _webView.UIDelegate = self;
@@ -272,14 +273,19 @@
 }
 
 - (void)clearCache:(FlutterResult)result {
-  NSSet* cacheDataTypes = [WKWebsiteDataStore allWebsiteDataTypes];
-  WKWebsiteDataStore* dataStore = [WKWebsiteDataStore defaultDataStore];
-  NSDate* dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
-  [dataStore removeDataOfTypes:cacheDataTypes
-                 modifiedSince:dateFrom
-             completionHandler:^{
-               result(nil);
-             }];
+  if (@available(iOS 9.0, *)) {
+    NSSet* cacheDataTypes = [WKWebsiteDataStore allWebsiteDataTypes];
+    WKWebsiteDataStore* dataStore = [WKWebsiteDataStore defaultDataStore];
+    NSDate* dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
+    [dataStore removeDataOfTypes:cacheDataTypes
+                   modifiedSince:dateFrom
+               completionHandler:^{
+                 result(nil);
+               }];
+  } else {
+    // support for iOS8 tracked in https://github.com/flutter/flutter/issues/27624.
+    NSLog(@"Clearing cache is not supported for Flutter WebViews prior to iOS 9.");
+  }
 }
 
 - (void)onGetTitle:(FlutterResult)result {
@@ -386,18 +392,25 @@
     case 0:  // require_user_action_for_all_media_types
       if (@available(iOS 10.0, *)) {
         configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll;
-      } else {
+      } else if (@available(iOS 9.0, *)) {
         configuration.requiresUserActionForMediaPlayback = true;
+      } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        configuration.mediaPlaybackRequiresUserAction = true;
+#pragma clang diagnostic pop
       }
       break;
     case 1:  // always_allow
       if (@available(iOS 10.0, *)) {
+        configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+      } else if (@available(iOS 9.0, *)) {
+        configuration.requiresUserActionForMediaPlayback = false;
+      } else {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+        configuration.mediaPlaybackRequiresUserAction = false;
 #pragma clang diagnostic pop
-      } else {
-        configuration.requiresUserActionForMediaPlayback = false;
       }
       break;
     default:
@@ -456,7 +469,11 @@
 }
 
 - (void)updateUserAgent:(NSString*)userAgent {
-  [_webView setCustomUserAgent:userAgent];
+  if (@available(iOS 9.0, *)) {
+    [_webView setCustomUserAgent:userAgent];
+  } else {
+    NSLog(@"Updating UserAgent is not supported for Flutter WebViews prior to iOS 9.");
+  }
 }
 
 #pragma mark WKUIDelegate
